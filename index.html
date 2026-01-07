@@ -1,0 +1,590 @@
+import React, { useState, useEffect } from 'react';
+import { Play, Clock, Type, Check, X, Trophy, User, RefreshCw, Star, Beaker, Dna, Microscope, FileText } from 'lucide-react';
+
+// --- DATA SOAL (QUESTION BANK) ---
+const questionsData = [
+  {
+    id: 1,
+    questionEn: "What microorganism is used to make Tempeh?",
+    questionId: "Mikroorganisme apa yang digunakan untuk membuat Tempe?",
+    answer: "Rhizopus",
+    options: ["Rhizopus", "Saccharomyces", "Lactobacillus", "Acetobacter"],
+    category: "Conventional"
+  },
+  {
+    id: 2,
+    questionEn: "Which of the following is a product of Modern Biotechnology?",
+    questionId: "Manakah di bawah ini yang merupakan produk Bioteknologi Modern?",
+    answer: "Cloning",
+    options: ["Tempeh", "Soy Sauce", "Cloning", "Yogurt"],
+    category: "Modern"
+  },
+  {
+    id: 3,
+    questionEn: "The main characteristic of conventional biotechnology is...",
+    questionId: "Ciri utama dari bioteknologi konvensional adalah...",
+    answer: "Fermentation",
+    options: ["DNA Recombinant", "Fermentation", "Genetic Engineering", "Cloning"],
+    category: "Concept"
+  },
+  {
+    id: 4,
+    questionEn: "Yogurt is made using bacteria called...",
+    questionId: "Yoghurt dibuat menggunakan bakteri yang disebut...",
+    answer: "Lactobacillus",
+    options: ["Aspergillus", "Penicillium", "Lactobacillus", "Rhizopus"],
+    category: "Food"
+  },
+  {
+    id: 5,
+    questionEn: "Penicillin is an antibiotic produced by...",
+    questionId: "Penisilin adalah antibiotik yang dihasilkan oleh...",
+    answer: "Fungi",
+    options: ["Bacteria", "Virus", "Fungi", "Algae"],
+    category: "Medicine"
+  },
+  {
+    id: 6,
+    questionEn: "Organisms whose genetic material has been altered are called...",
+    questionId: "Organisme yang materi genetiknya telah diubah disebut...",
+    answer: "GMO",
+    options: ["GMO", "Fermenter", "Clone", "Hybrid"],
+    category: "Modern"
+  },
+  {
+    id: 7,
+    questionEn: "Bread dough rises because of a fungus called...",
+    questionId: "Adonan roti mengembang karena jamur yang disebut...",
+    answer: "Yeast",
+    options: ["Mold", "Yeast", "Algae", "Protozoa"],
+    category: "Food"
+  },
+  {
+    id: 8,
+    questionEn: "What is the basic unit of heredity used in genetic engineering?",
+    questionId: "Apa unit dasar pewarisan sifat yang digunakan dalam rekayasa genetika?",
+    answer: "Gene",
+    options: ["Cell", "Tissue", "Gene", "Organ"],
+    category: "Concept"
+  }
+];
+
+// --- COMPONENTS ---
+
+const Card = ({ children, className = "" }) => (
+  <div className={`bg-white rounded-3xl shadow-xl overflow-hidden border-4 border-b-8 border-indigo-100 print:shadow-none print:border-none ${className}`}>
+    {children}
+  </div>
+);
+
+const Button = ({ onClick, children, variant = "primary", className = "", disabled = false }) => {
+  const baseStyle = "transform active:scale-95 transition-all duration-150 font-bold rounded-xl py-3 px-6 shadow-md border-b-4 print:hidden";
+  
+  const variants = {
+    primary: "bg-blue-500 hover:bg-blue-400 text-white border-blue-700",
+    secondary: "bg-purple-500 hover:bg-purple-400 text-white border-purple-700",
+    success: "bg-green-500 hover:bg-green-400 text-white border-green-700",
+    danger: "bg-red-500 hover:bg-red-400 text-white border-red-700",
+    warning: "bg-yellow-400 hover:bg-yellow-300 text-yellow-900 border-yellow-600",
+    outline: "bg-white hover:bg-gray-50 text-gray-700 border-gray-300"
+  };
+
+  return (
+    <button 
+      onClick={onClick} 
+      disabled={disabled}
+      className={`${baseStyle} ${variants[variant]} ${disabled ? "opacity-50 cursor-not-allowed grayscale" : ""} ${className}`}
+    >
+      {children}
+    </button>
+  );
+};
+
+export default function BiotechnologyGame() {
+  const [appState, setAppState] = useState('welcome'); // welcome, menu, playing, result
+  const [studentName, setStudentName] = useState('');
+  const [gameMode, setGameMode] = useState(null); // 'quiz', 'time', 'scramble'
+  const [currentQIndex, setCurrentQIndex] = useState(0);
+  const [score, setScore] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [feedback, setFeedback] = useState(null); // 'correct', 'wrong', null
+  const [scrambleLetters, setScrambleLetters] = useState([]);
+  const [scrambleAnswer, setScrambleAnswer] = useState([]);
+  
+  // New state to track user answers for the report
+  const [userAnswers, setUserAnswers] = useState([]); 
+
+  // --- LOGIC: GAME CONTROL ---
+
+  const startGame = (mode) => {
+    setGameMode(mode);
+    setAppState('playing');
+    setCurrentQIndex(0);
+    setScore(0);
+    setFeedback(null);
+    setUserAnswers([]); // Reset answers
+    
+    // Init Scramble if needed
+    if (mode === 'scramble') {
+      initScramble(0);
+    }
+
+    // Init Timer for Time Attack
+    if (mode === 'time') {
+      setTimeLeft(10); 
+    }
+  };
+
+  const handleNextQuestion = () => {
+    if (currentQIndex < questionsData.length - 1) {
+      setCurrentQIndex(prev => prev + 1);
+      setFeedback(null);
+      
+      if (gameMode === 'scramble') {
+        initScramble(currentQIndex + 1);
+      }
+      if (gameMode === 'time') {
+        setTimeLeft(10);
+        setIsPaused(false);
+      }
+    } else {
+      setAppState('result');
+    }
+  };
+
+  // --- LOGIC: ANSWER HANDLING ---
+
+  const recordAnswer = (isCorrect, userAnswer) => {
+    const currentQ = questionsData[currentQIndex];
+    setUserAnswers(prev => [...prev, {
+      id: currentQ.id,
+      questionEn: currentQ.questionEn,
+      questionId: currentQ.questionId,
+      isCorrect: isCorrect,
+      userAnswer: userAnswer,
+      correctAnswer: currentQ.answer
+    }]);
+  };
+
+  const handleAnswer = (selectedOption) => {
+    if (feedback) return; // Prevent double clicks
+
+    const currentQ = questionsData[currentQIndex];
+    const isCorrect = selectedOption === currentQ.answer;
+
+    // Record the answer
+    recordAnswer(isCorrect, selectedOption);
+
+    if (isCorrect) {
+      setScore(prev => prev + (gameMode === 'time' ? 20 : 10)); // Time attack gets more points
+      setFeedback('correct');
+    } else {
+      setFeedback('wrong');
+    }
+
+    if (gameMode === 'time') setIsPaused(true);
+
+    // Auto advance after short delay
+    setTimeout(() => {
+      handleNextQuestion();
+    }, 1500);
+  };
+
+  // --- LOGIC: TIMER (For Time Attack) ---
+  useEffect(() => {
+    let timer;
+    if (gameMode === 'time' && appState === 'playing' && !isPaused && !feedback) {
+      if (timeLeft > 0) {
+        timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
+      } else {
+        // Time ran out
+        setFeedback('wrong');
+        recordAnswer(false, "Time Out"); // Record timeout as wrong
+        setTimeout(handleNextQuestion, 1500);
+      }
+    }
+    return () => clearInterval(timer);
+  }, [timeLeft, gameMode, appState, isPaused, feedback]);
+
+
+  // --- LOGIC: SCRAMBLE MODE ---
+  const initScramble = (index) => {
+    const ans = questionsData[index].answer.toUpperCase();
+    const letters = ans.split('').sort(() => Math.random() - 0.5);
+    setScrambleLetters(letters.map((l, i) => ({ id: i, char: l, used: false })));
+    setScrambleAnswer([]);
+  };
+
+  const handleScrambleClick = (letterObj) => {
+    if (feedback) return;
+    
+    // Add to answer
+    const newAnswer = [...scrambleAnswer, letterObj];
+    setScrambleAnswer(newAnswer);
+
+    // Mark letter as used
+    const newLetters = scrambleLetters.map(l => 
+      l.id === letterObj.id ? { ...l, used: true } : l
+    );
+    setScrambleLetters(newLetters);
+
+    // Check if full word formed
+    const currentAnsString = questionsData[currentQIndex].answer.toUpperCase();
+    if (newAnswer.length === currentAnsString.length) {
+      const attempt = newAnswer.map(l => l.char).join('');
+      const isCorrect = attempt === currentAnsString;
+      
+      // Record answer
+      recordAnswer(isCorrect, attempt);
+
+      if (isCorrect) {
+        setScore(prev => prev + 15);
+        setFeedback('correct');
+      } else {
+        setFeedback('wrong');
+      }
+      setTimeout(handleNextQuestion, 1500);
+    }
+  };
+
+  const resetScramble = () => {
+    if (feedback) return;
+    const currentQ = questionsData[currentQIndex];
+    // Reset letters to unused
+    setScrambleLetters(prev => prev.map(l => ({ ...l, used: false })));
+    setScrambleAnswer([]);
+  };
+
+  // --- UI PARTIALS ---
+
+  const ProgressBar = () => (
+    <div className="w-full bg-gray-200 rounded-full h-3 mb-6 print:hidden">
+      <div 
+        className="bg-green-400 h-3 rounded-full transition-all duration-500" 
+        style={{ width: `${((currentQIndex + 1) / questionsData.length) * 100}%` }}
+      ></div>
+    </div>
+  );
+
+  const FeedbackOverlay = () => {
+    if (!feedback) return null;
+    return (
+      <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm rounded-3xl print:hidden">
+        <div className={`transform scale-110 p-8 rounded-full shadow-2xl ${feedback === 'correct' ? 'bg-green-500' : 'bg-red-500'}`}>
+          {feedback === 'correct' ? <Check size={64} className="text-white" /> : <X size={64} className="text-white" />}
+        </div>
+      </div>
+    );
+  };
+
+  // --- SCREENS ---
+
+  if (appState === 'welcome') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center p-4 print:bg-white">
+        <Card className="max-w-md w-full p-8 text-center space-y-6">
+          <div className="flex justify-center space-x-2">
+            <Beaker className="text-blue-500" size={40} />
+            <Dna className="text-purple-500" size={40} />
+            <Microscope className="text-green-500" size={40} />
+          </div>
+          <div>
+            <h1 className="text-3xl font-extrabold text-gray-800">BioGenius Lab</h1>
+            <p className="text-gray-500 mt-2">Asesmen Awal Bioteknologi</p>
+          </div>
+          
+          <div className="text-left">
+            <label className="block text-sm font-bold text-gray-700 mb-1">Nama Siswa / Student Name</label>
+            <input 
+              type="text" 
+              value={studentName}
+              onChange={(e) => setStudentName(e.target.value)}
+              placeholder="Ketik namamu di sini..."
+              className="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all"
+            />
+          </div>
+
+          <Button 
+            onClick={() => setAppState('menu')} 
+            disabled={!studentName.trim()}
+            className="w-full text-lg"
+          >
+            Mulai Petualangan!
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+  if (appState === 'menu') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center p-4">
+        <Card className="max-w-2xl w-full p-6 text-center">
+          <div className="flex justify-between items-center mb-6">
+             <div className="flex items-center space-x-2">
+                <div className="bg-purple-100 p-2 rounded-full"><User className="text-purple-600" size={20}/></div>
+                <span className="font-bold text-gray-700">{studentName}</span>
+             </div>
+             <button onClick={() => setAppState('welcome')} className="text-xs text-red-400 hover:text-red-600 font-bold">Keluar</button>
+          </div>
+
+          <h2 className="text-2xl font-bold text-gray-800 mb-6">Pilih Mode Permainan</h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <button 
+              onClick={() => startGame('quiz')}
+              className="group relative overflow-hidden bg-blue-50 hover:bg-blue-100 border-2 border-blue-200 rounded-2xl p-6 transition-all hover:-translate-y-1 hover:shadow-lg"
+            >
+              <div className="flex flex-col items-center space-y-3">
+                <div className="bg-blue-500 text-white p-4 rounded-full shadow-lg group-hover:scale-110 transition-transform">
+                  <Beaker size={32} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-blue-900">Lab Quiz</h3>
+                  <p className="text-xs text-blue-600 mt-1">Santai & Teliti</p>
+                </div>
+              </div>
+            </button>
+
+            <button 
+              onClick={() => startGame('time')}
+              className="group relative overflow-hidden bg-red-50 hover:bg-red-100 border-2 border-red-200 rounded-2xl p-6 transition-all hover:-translate-y-1 hover:shadow-lg"
+            >
+              <div className="flex flex-col items-center space-y-3">
+                <div className="bg-red-500 text-white p-4 rounded-full shadow-lg group-hover:scale-110 transition-transform">
+                  <Clock size={32} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-red-900">Time Attack</h3>
+                  <p className="text-xs text-red-600 mt-1">Cepat & Tepat</p>
+                </div>
+              </div>
+            </button>
+
+            <button 
+              onClick={() => startGame('scramble')}
+              className="group relative overflow-hidden bg-yellow-50 hover:bg-yellow-100 border-2 border-yellow-200 rounded-2xl p-6 transition-all hover:-translate-y-1 hover:shadow-lg"
+            >
+              <div className="flex flex-col items-center space-y-3">
+                <div className="bg-yellow-500 text-white p-4 rounded-full shadow-lg group-hover:scale-110 transition-transform">
+                  <Type size={32} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-yellow-900">Bio Scramble</h3>
+                  <p className="text-xs text-yellow-700 mt-1">Susun Kata</p>
+                </div>
+              </div>
+            </button>
+          </div>
+          <p className="mt-8 text-gray-400 text-sm">Pilih satu untuk memulai diagnosa materi!</p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (appState === 'result') {
+    const maxScore = gameMode === 'time' ? questionsData.length * 20 : (gameMode === 'scramble' ? questionsData.length * 15 : questionsData.length * 10);
+    const percentage = Math.round((score / maxScore) * 100);
+    
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center p-4 print:p-0 print:bg-white">
+        <Card className="max-w-2xl w-full p-8 text-center relative overflow-visible print:shadow-none print:w-full print:max-w-none">
+          <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 print:hidden">
+            <div className="bg-yellow-400 p-4 rounded-full border-4 border-white shadow-xl">
+              <Trophy size={48} className="text-yellow-900" />
+            </div>
+          </div>
+
+          {/* Header khusus Print */}
+          <div className="hidden print:block text-left border-b-2 border-gray-300 pb-4 mb-4">
+             <h1 className="text-2xl font-bold text-gray-800">Laporan Asesmen Bioteknologi</h1>
+             <p className="text-gray-500">Guru IPA Profesional</p>
+          </div>
+          
+          <div className="mt-8 space-y-2 print:mt-0 print:text-left print:flex print:justify-between print:items-center">
+            <div>
+                <h2 className="text-3xl font-bold text-gray-800 print:text-xl">Hasil Asesmen</h2>
+                <p className="text-gray-500 text-xl font-medium">{studentName}</p>
+            </div>
+            <div className="hidden print:block text-right">
+                <p className="text-sm text-gray-400">Tanggal</p>
+                <p className="font-bold">{new Date().toLocaleDateString('id-ID')}</p>
+            </div>
+          </div>
+
+          <div className="my-8 bg-gray-50 rounded-2xl p-6 border-2 border-dashed border-gray-300 print:border-gray-800 print:bg-white print:py-4">
+             <div className="flex justify-center items-baseline space-x-2">
+                 <div className="text-5xl font-black text-indigo-600 print:text-black">{score}</div>
+                 <span className="text-gray-400 font-bold">/ {maxScore}</span>
+             </div>
+             <div className="text-sm font-bold text-gray-400 uppercase tracking-widest">Total Poin</div>
+             <div className="mt-4 flex justify-center space-x-1 print:hidden">
+               {[...Array(5)].map((_, i) => (
+                 <Star 
+                   key={i} 
+                   size={24} 
+                   className={i < (percentage / 20) ? "text-yellow-400 fill-current" : "text-gray-300"} 
+                 />
+               ))}
+             </div>
+          </div>
+
+          {/* REPORT TABLE SECTION */}
+          <div className="mb-8 text-left">
+            <h3 className="font-bold text-gray-700 mb-4 flex items-center">
+                <FileText size={20} className="mr-2"/> Detail Jawaban
+            </h3>
+            <div className="space-y-3">
+                {userAnswers.map((item, idx) => (
+                    <div key={idx} className={`p-3 rounded-lg border flex justify-between items-start ${item.isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} print:bg-white print:border-gray-200 print:border-b`}>
+                        <div className="flex-1">
+                            <div className="text-xs text-gray-400 font-bold mb-1">No. {idx + 1}</div>
+                            <div className="font-medium text-gray-800 text-sm mb-1">{item.questionId}</div>
+                            <div className="text-xs text-gray-500 italic">{item.questionEn}</div>
+                        </div>
+                        <div className="ml-4 text-right min-w-[100px]">
+                            {item.isCorrect ? (
+                                <div className="flex items-center justify-end text-green-600 font-bold text-sm">
+                                    <Check size={16} className="mr-1"/> Benar
+                                </div>
+                            ) : (
+                                <div className="text-sm">
+                                    <div className="flex items-center justify-end text-red-500 font-bold">
+                                        <X size={16} className="mr-1"/> Salah
+                                    </div>
+                                    <div className="text-xs text-gray-500 mt-1">
+                                        Jawab: <span className="line-through">{item.userAnswer}</span>
+                                    </div>
+                                    <div className="text-xs text-green-600 font-bold mt-1">
+                                        Kunci: {item.correctAnswer}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+          </div>
+
+          <div className="space-y-3 print:hidden">
+            <Button onClick={() => setAppState('menu')} variant="primary" className="w-full">
+              Main Lagi / Play Again
+            </Button>
+            <Button onClick={() => window.print()} variant="outline" className="w-full">
+              Cetak / Simpan PDF
+            </Button>
+            <p className="text-xs text-gray-400 mt-2">
+                *Klik "Cetak / Simpan PDF", lalu pilih "Save as PDF" pada tujuan printer.
+            </p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // --- GAME PLAY RENDER ---
+  const currentQ = questionsData[currentQIndex];
+
+  return (
+    <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4">
+      <div className="w-full max-w-2xl">
+        {/* Header Bar */}
+        <div className="flex justify-between items-center mb-4 px-2">
+           <div className="flex items-center space-x-3">
+             <div className="bg-white px-4 py-2 rounded-full shadow font-bold text-indigo-600 flex items-center">
+               <Star size={16} className="mr-2" /> {score}
+             </div>
+             {gameMode === 'time' && (
+               <div className={`px-4 py-2 rounded-full shadow font-bold flex items-center text-white ${timeLeft < 4 ? 'bg-red-500 animate-pulse' : 'bg-blue-500'}`}>
+                 <Clock size={16} className="mr-2" /> {timeLeft}s
+               </div>
+             )}
+           </div>
+           <div className="text-gray-500 font-bold">
+             {currentQIndex + 1} / {questionsData.length}
+           </div>
+        </div>
+
+        <Card className="relative min-h-[400px] flex flex-col p-6">
+          <FeedbackOverlay />
+          
+          <ProgressBar />
+
+          {/* Question Section */}
+          <div className="mb-8 text-center space-y-2">
+            <h2 className="text-2xl md:text-3xl font-extrabold text-gray-800 leading-tight">
+              {currentQ.questionEn}
+            </h2>
+            <p className="text-lg text-indigo-500 italic font-medium">
+              {currentQ.questionId}
+            </p>
+          </div>
+
+          {/* GAME MODES RENDER */}
+          <div className="flex-1 flex flex-col justify-end">
+            
+            {/* MODE 1 & 2: Quiz & Time Attack */}
+            {(gameMode === 'quiz' || gameMode === 'time') && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {currentQ.options.map((opt, idx) => (
+                  <Button 
+                    key={idx} 
+                    onClick={() => handleAnswer(opt)}
+                    className="h-16 text-lg"
+                    variant={['primary', 'secondary', 'success', 'warning'][idx % 4]} // Colorful buttons
+                  >
+                    {opt}
+                  </Button>
+                ))}
+              </div>
+            )}
+
+            {/* MODE 3: Scramble */}
+            {gameMode === 'scramble' && (
+              <div className="space-y-6">
+                 {/* Answer Drop Zone */}
+                 <div className="flex flex-wrap justify-center gap-2 min-h-[60px]">
+                    {scrambleAnswer.map((item, idx) => (
+                      <div key={idx} className="w-12 h-12 bg-indigo-600 text-white rounded-lg flex items-center justify-center font-bold text-xl shadow-lg animate-bounce">
+                        {item.char}
+                      </div>
+                    ))}
+                    {/* Empty slots placeholders */}
+                    {[...Array(Math.max(0, currentQ.answer.length - scrambleAnswer.length))].map((_, i) => (
+                       <div key={`empty-${i}`} className="w-12 h-12 bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg"></div>
+                    ))}
+                 </div>
+
+                 <div className="flex justify-center">
+                    <button onClick={resetScramble} className="text-sm text-gray-400 flex items-center hover:text-red-500">
+                      <RefreshCw size={14} className="mr-1"/> Reset Kata
+                    </button>
+                 </div>
+
+                 {/* Letter Bank */}
+                 <div className="flex flex-wrap justify-center gap-3">
+                   {scrambleLetters.map((item) => (
+                     <button
+                       key={item.id}
+                       onClick={() => handleScrambleClick(item)}
+                       disabled={item.used}
+                       className={`w-14 h-14 rounded-xl font-bold text-xl shadow-md transition-all 
+                         ${item.used 
+                           ? 'bg-gray-200 text-gray-300 scale-90' 
+                           : 'bg-white text-gray-800 border-b-4 border-gray-300 hover:bg-yellow-50 hover:-translate-y-1 active:scale-95'
+                         }`}
+                     >
+                       {item.char}
+                     </button>
+                   ))}
+                 </div>
+              </div>
+            )}
+
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
